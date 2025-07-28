@@ -2,6 +2,14 @@
 
 This project provides a fully script-driven setup for building a reliable, modular NAS (Network-Attached Storage) on Ubuntu using tools like ZFS, Samba, UFW, and optional web interfaces.
 
+
+
+# Why this project
+This is a very opinionated installation, surly it's not perfect, I did it because at the end of the day all systems that I have tried needs that you do some kind of commandline work.
+E.g. when I create a pool with one disk, I know that it's one disk, I do not need at warning telling me that there is no redundancy. As far as I know, ZFS is the best for a NAS, speed, snapshot etc.
+
+in one system I spend 30 hours for it to check my array, just to tell med that I had 38.000 errors on my hard drive - it was an array of 4 brand new 4TB WD RED NAS drives. 
+
 ---
 
 ## 🚀 Features
