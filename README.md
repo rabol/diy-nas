@@ -37,8 +37,12 @@ in one system I spend 30 hours for it to check my array, just to tell med that I
 ## 📂 How to Use
 
 1. Clone or extract this repository.
+   ```bash
+   git clone https://github.com/rabol/diy-nas.git
+   ```
 2. Make sure all scripts are executable:
    ```bash
+   cd diy-nas
    chmod +x *.sh
    ```
 3. Run the orchestrator:
