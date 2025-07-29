@@ -81,9 +81,11 @@ network:
         mode: active-backup
         primary: ${IFACE1}
       addresses: [${STATIC_IP}]
-      gateway4: ${GATEWAY}
       nameservers:
         addresses: [${DNS}]
+      routes:
+        - to: default
+          via: ${GATEWAY}
 EOF
   fi
 else

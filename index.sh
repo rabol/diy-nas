@@ -17,7 +17,8 @@ run_script() {
   local log_file="$LOG_DIR/${base_name}.log"
 
   echo "==== Running: $script ====" | tee -a "$log_file"
-  if bash "./$script" >> "$log_file" 2>&1; then
+  # Run with live output and logging, preserve interactivity
+  if bash "./$script" 2>&1 | tee -a "$log_file"; then
     echo "==== Completed: $script ====" | tee -a "$log_file"
   else
     echo "❌ ERROR in $script — check log: $log_file" | tee -a "$log_file"
