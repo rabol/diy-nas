@@ -46,7 +46,7 @@ All scripts must be:
 - Install Ubuntu Server 24.04 LTS (minimal, no snap)
 - Use entire boot disk (expand partition fully)
 - Create dedicated admin user: `sysadmin` (with sudo rights)
-- Static hostname: `nas-dry.lan`
+- Static hostname: `diy-nas.lan`
 
 ---
 
@@ -55,7 +55,7 @@ All scripts must be:
 **Script:** `02-install-packages.sh`
 
 - Installs all necessary packages for the NAS setup in one centralized script.
-- Enables and starts `systemd-networkd` for networking (Cockpit/NetworkManager are not used).
+- Enables and starts `systemd-networkd` for networking.
 - Removes and blocks `ntpsec` to avoid time daemon conflicts.
 - Installs key packages:
   - `zfsutils-linux`, `samba`, `smbclient`, `libnss-winbind`, `winbind`, `avahi-daemon`

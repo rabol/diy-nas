@@ -54,7 +54,7 @@ in one system I spend 30 hours for it to check my array, just to tell med that I
 
 Detailed documentation is available in:
 
-**`nas_installation.md`**  
+**`installation.md`**  
 Explains every step from prechecks to optional UI setup and backup strategy.
 
 ---
