@@ -45,7 +45,7 @@ in one system I spend 30 hours for it to check my array, just to tell med that I
    cd diy-nas
    chmod +x *.sh
    ```
-3. Run the orchestrator:
+3. Run the orchestrator: it will run all scripts or you can run each script manually
    ```bash
    ./index.sh
    ```

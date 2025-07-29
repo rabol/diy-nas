@@ -1,5 +1,32 @@
 #!/bin/bash
 set -euo pipefail
+source lib/logging.sh
+
+ACTION="${1:-}"
+USERNAME="${2:-}"
+POOL="${3:-}"
+
+if [[ -z "$ACTION" ]]; then
+  echo "No action specified. What do you want to do?"
+  select ACTION in add remove quit; do
+    [[ -n "$ACTION" ]] && break
+  done
+fi
+
+if [[ "$ACTION" == "quit" ]]; then
+  log_info "Aborting user management."
+  exit 0
+fi
+
+if [[ -z "$USERNAME" ]]; then
+  read -rp "Enter the username: " USERNAME
+fi
+
+if [[ "$ACTION" == "add" && -z "$POOL" ]]; then
+  read -rp "Enter the ZFS pool (optional): " POOL
+fi
+
+set -euo pipefail
 
 SCRIPT_NAME="06-manage-user"
 LOG_DIR="/var/log/nas-setup"
