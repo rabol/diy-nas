@@ -63,12 +63,14 @@ mkdir -p /etc/samba/users.d
 touch /etc/samba/users.d/users.conf
 
 # Create main smb.conf
+NB_NAME="$(hostname | cut -d. -f1 | tr -dc 'A-Za-z0-9-' | cut -c1-15 | tr '[:lower:]' '[:upper:]')"
+
 log_info "Creating new smb.conf..."
 cat <<EOF > /etc/samba/smb.conf
 [global]
    workgroup = WORKGROUP
    server string = NAS Server
-   netbios name = NAS
+   netbios name = ${NB_NAME}
    dns proxy = no
    log file = /var/log/samba/log.%m
    max log size = 1000
