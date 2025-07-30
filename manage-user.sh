@@ -1,6 +1,49 @@
 #!/bin/bash
 set -euo pipefail
-source lib/logging.sh
+
+# Load logging functions
+if [[ -f "./logging.sh" ]]; then
+  source ./logging.sh
+else
+  echo "ERROR: logging.sh not found."
+  exit 1
+fi
+
+# Ensure script is run as root
+if [[ $EUID -ne 0 ]]; then
+  log_error "This script must be run as root."
+  exit 1
+fi
+
+# Load config
+CONFIG_FILE="/etc/nas-setup-scripts/config.sh"
+if [[ -f "$CONFIG_FILE" ]]; then
+  source "$CONFIG_FILE"
+else
+  log_error "Missing config file at $CONFIG_FILE"
+  exit 1
+fi
+
+SCRIPT_NAME="$(basename "$0")"
+LOG_FILE="${LOG_DIR}/${SCRIPT_NAME}.log"
+
+# Ensure log directory exists
+mkdir -p "$LOG_DIR"
+chmod 755 "$LOG_DIR"
+
+# Ask user for confirmation
+read -rp "Do you want to continue with ${SCRIPT_NAME}? (yes/no): " ANSWER
+ANSWER="${ANSWER,,}"  # Convert to lowercase
+
+if [[ "$ANSWER" != "yes" && "$ANSWER" != "y"]]; then
+  log_info "${SCRIPT_NAME} skipped by user."
+  exit 0
+fi
+
+###### -- Main script starts here - ######
+
+
+
 
 ACTION="${1:-}"
 USERNAME="${2:-}"
@@ -56,29 +99,29 @@ SMB_USERS_CONF="/etc/samba/users.conf"
 USER_SMB_CONF="/etc/samba/users.d/${USERNAME}.conf"
 
 if [[ "$ACTION" == "add" ]]; then
-  log "Adding user '$USERNAME' with pool '${POOL}'"
+  log_info "Adding user '$USERNAME' with pool '${POOL}'"
 
   # Create UNIX user
   if id "$USERNAME" &>/dev/null; then
-    log "User '$USERNAME' already exists."
+    log_info "User '$USERNAME' already exists."
   else
-    log "Creating UNIX user '$USERNAME' with home at $USER_HOME"
+    log_info "Creating UNIX user '$USERNAME' with home at $USER_HOME"
     useradd -m -d "$USER_HOME" -s /bin/bash "$USERNAME"
     passwd "$USERNAME"
   fi
 
   # Create user directories
-  log "Creating directories for $USERNAME..."
+  log_info "Creating directories for $USERNAME..."
   mkdir -p "$USER_HOME" "$TIMEMACHINE_DIR"
   chown -R "$USERNAME:$USERNAME" "$USER_HOME" "$TIMEMACHINE_DIR"
   chmod 700 "$USER_HOME" "$TIMEMACHINE_DIR"
 
   # Samba user
-  log "Creating Samba user for '$USERNAME'..."
+  log_info "Creating Samba user for '$USERNAME'..."
   smbpasswd -a "$USERNAME"
 
   # Per-user Samba config
-  log "Creating Samba config: $USER_SMB_CONF"
+  log_info "Creating Samba config: $USER_SMB_CONF"
   mkdir -p /etc/samba/users.d
   tee "$USER_SMB_CONF" > /dev/null <<EOF
 [${USERNAME}]
@@ -97,7 +140,7 @@ EOF
 
   # Append include to users.conf if not present
   if ! grep -Fxq "include = $USER_SMB_CONF" "$SMB_USERS_CONF"; then
-    log "Appending include to $SMB_USERS_CONF"
+    log_info "Appending include to $SMB_USERS_CONF"
     echo "include = $USER_SMB_CONF" >> "$SMB_USERS_CONF"
   fi
 
@@ -114,14 +157,14 @@ EOF
 
     # Create group if needed
     if getent group "$GROUP" > /dev/null; then
-      log "Group '${GROUP}' already exists."
+      log_info "Group '${GROUP}' already exists."
     else
-      log "Creating group '${GROUP}'"
+      log_info "Creating group '${GROUP}'"
       groupadd "$GROUP"
     fi
 
     # Add user to group
-    log "Adding user '$USERNAME' to group '$GROUP'"
+    log_info "Adding user '$USERNAME' to group '$GROUP'"
     usermod -aG "$GROUP" "$USERNAME"
 
     # Create and set up shared directory
@@ -130,7 +173,7 @@ EOF
     chmod 2770 "$GROUP_SHARE_PATH"
 
     # Create Samba config for group share
-    log "Creating group Samba config: ${GROUP_CONF}"
+    log_info "Creating group Samba config: ${GROUP_CONF}"
     tee "$GROUP_CONF" > /dev/null <<EOF
 [${GROUP_DATASET}]
    path = ${GROUP_SHARE_PATH}
@@ -144,35 +187,35 @@ EOF
 
     # Include group config if not already listed
     if ! grep -Fxq "include = $GROUP_CONF" "$SMB_USERS_CONF"; then
-      log "Appending include to $SMB_USERS_CONF"
+      log_info "Appending include to $SMB_USERS_CONF"
       echo "include = $GROUP_CONF" >> "$SMB_USERS_CONF"
     fi
   fi
 
-  log "Reloading Samba services..."
+  log_info "Reloading Samba services..."
   systemctl reload smbd
-  log "User '$USERNAME' setup complete."
+  log_info "User '$USERNAME' setup complete."
 
 elif [[ "$ACTION" == "remove" ]]; then
-  log "Removing user '$USERNAME'..."
+  log_info "Removing user '$USERNAME'..."
 
   # Remove UNIX and Samba user
-  userdel -r "$USERNAME" || log "Warning: could not delete UNIX user"
-  smbpasswd -x "$USERNAME" || log "Warning: could not delete Samba user"
+  userdel -r "$USERNAME" || log_info "Warning: could not delete UNIX user"
+  smbpasswd -x "$USERNAME" || log_info "Warning: could not delete Samba user"
 
   # Remove directories
   rm -rf "$USER_HOME" "$TIMEMACHINE_DIR"
-  log "Removed home and Time Machine directories."
+  log_info "Removed home and Time Machine directories."
 
   # Remove Samba config
   rm -f "$USER_SMB_CONF"
   sed -i "\|include = $USER_SMB_CONF|d" "$SMB_USERS_CONF"
 
-  log "Reloading Samba services..."
+  log_info "Reloading Samba services..."
   systemctl reload smbd
-  log "User '$USERNAME' removed."
+  log_info "User '$USERNAME' removed."
 
 else
-  log "Invalid action: $ACTION"
+  log_info "Invalid action: $ACTION"
   exit 1
 fi

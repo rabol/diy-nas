@@ -4,7 +4,7 @@
 
 ## OVERVIEW
 
-**Target Platform:** A mini pc with 1 or 2 NIC's.  
+**Target Platform:** Any hardware that can run Ubuntu with 1 or 2 NIC's.  
 **OS:** Ubuntu Server 24.04 LTS (minimal install)  
 **Primary Goals:**
 
@@ -16,28 +16,26 @@
 - Web-based admin via Cockpit or webmin
 - Use Postmark (msmtp/mailx) for email alerts
 - Add colored output for pass/fail.
-- add logging to all scripts
+- Logging to all scripts
 - Time Sync Strategy
 - Use chrony as it is better accuracy/flexibility
 - shared log directory: /var/log/nas-setup/ 
-- make sure that the log directory exists
-- enforcing logging for every script (with timestamp and status).
-- create a log() function inside each script.
 
 --- 
 
-**Directory for Scripts:**  
-`/opt/nas-setup-scripts/`
+## Prerequisites
 
-All scripts must be:
+Before you begin, make sure you have:
 
-- Idempotent (safe to re-run)
-- Include error handling
-- Use `set -euo pipefail`
-- Remove/reconfigure prior state if needed for override
-- Have executable permission (`chmod +x`)
+- A clean installation of Ubuntu Server 24.04 LTS (minimal, no snaps)
+- Sudo privileges with a dedicated admin user (`sysadmin`)
+- At least one clean storage device (for ZFS pool creation)
+- SSH access configured (with keys if you plan to disable password login)
+- Internet access for downloading packages
+- Postmark account (for email alerts) if you plan to set up SMTP notifications
+- Optional: Backblaze B2 or other supported remote storage for `rclone` backups
 
----
+
 
 ## Step 1: Base OS Installation
 
@@ -69,13 +67,11 @@ All scripts must be:
 **Script:** `03-configure-network.sh`
 
 - This script uses `systemd-networkd` to manage network interfaces.
-- If multiple physical NICs are detected, the user will be prompted to create a bonded interface.
+- If multiple physical NICs are detected, the user will be prompted to allow to create a bonded interface.
 - Bonding supports active-backup mode (mode 1) for fault tolerance.
 - User can choose between:
   - DHCP configuration
   - Static IP assignment (IP address, gateway, and DNS prompt)
-- Automatically writes `.network` and optional `.netdev` files to `/etc/systemd/network/`.
-- Ensures `systemd-networkd` is enabled and `NetworkManager` is masked if present.
 - Logs all actions to: `/var/log/nas-setup/03-configure-network.log`
 
 ---
@@ -121,7 +117,215 @@ After this step, you can proceed to define Samba users and shares in the `users.
 
 ---
 
-**Script:** `06-manage-user.sh`
+## Step 6: Install and Configure Rclone
+
+**Script:** `06-install-rclone.sh`
+
+- Installs the latest stable version of [rclone](https://rclone.org/) from the official source.
+- Removes any previously installed version from the system package manager.
+- Verifies the rclone installation.
+- Logs all activity to: `/var/log/nas-setup/08-install-rclone.log`
+
+### Notes:
+- This script does **not** run `rclone config` interactively — you must run it manually:
+  ```bash
+  rclone config
+  ```
+- Rclone configuration is stored in:
+  ```
+  ~/.config/rclone/rclone.conf
+  ```
+
+This tool can be used for syncing with cloud storage providers like Google Drive, Dropbox, S3, etc.
+
+---
+
+## Step 7: ZFS Snapshots
+
+**Script:** `07-zfs-snapshot.sh`
+
+- Installs and configures `zfs-auto-snapshot` to handle automatic local ZFS snapshots.
+- Retention policy:
+  - `24` hourly snapshots
+  - `7` daily snapshots
+  - `4` weekly snapshots
+---
+
+## Step 8: Rclone Backup
+
+**Script:** `08-remote-backup.sh`
+
+
+### Prompts:
+- Path to the local dataset to back up (e.g. `/tank_hdd`)
+- Target remote (e.g. `remote:backup`)
+
+### Behavior:
+- If backup fails, an alert is sent via `mailx` to the `root` user (adjustable).
+- The cron job is saved at: `/etc/cron.daily/rclone-backup`
+
+You should ensure that `rclone config` is already completed before running this step.
+
+---
+
+## Step 9: Configure Email Alerts (Postmark SMTP)
+
+**Script:** `09-configure-email.sh`
+
+- Sets up outbound email notifications via [Postmark SMTP](https://postmarkapp.com/).
+- Useful for system alerts (e.g., backup failures, SMART warnings).
+- Uses `msmtp` and `mailx` for minimal MTA functionality.
+
+### What it does:
+- Installs `msmtp`, `msmtp-mta`, and `bsd-mailx`
+- Prompts for:
+  - Sender address (must be verified in Postmark)
+  - Recipient address (target inbox for alerts)
+  - Postmark server token (used as SMTP credentials)
+- Writes configuration to `/etc/msmtprc` with secure permissions
+- Routes system mail from `root` to the recipient
+- Sends a test email to verify delivery
+- Logs actions to: `/var/log/nas-setup/09-configure-email.log`
+
+### Note:
+This is intended for authenticated SMTP relay via Postmark. You may adapt it for other SMTP providers if desired.
+
+---
+
+## Step 10: Secure SSH Access
+
+**Script:** `10-secure-ssh.sh`
+
+- Disables SSH password authentication to enforce key-based login only.
+- Modifies `/etc/ssh/sshd_config` to set:
+  ```text
+  PasswordAuthentication no
+  ```
+- Attempts to restart the `ssh` or `sshd` service.
+- Logs all actions to: `/var/log/nas-setup/10-secure-ssh.log`
+
+Ensure you have working SSH key access **before** applying this script, or you may lock yourself out.
+
+---
+
+## Step 11: Configure Firewall (UFW)
+
+**Script:** `11-configure-firewall.sh`
+
+- Enables the uncomplicated firewall (UFW) and applies baseline rules.
+- Opens ports:
+  - `22` (SSH)
+  - `445` (Samba/SMB)
+- Masks `nmbd.service` to avoid legacy NetBIOS conflicts.
+- Validates Samba availability (via `ping` and `smbclient`) if possible.
+- Logs all actions to: `/var/log/nas-setup/11-configure-firewall.log`
+
+This script provides basic security hardening for the NAS server.
+
+---
+
+## Step 12: Validate Installation
+
+**Script:** `12-validate-installation.sh`
+
+- Performs a complete validation of the NAS configuration after setup.
+- Logs all results to: `/var/log/nas-setup/12-validate-installation.log`
+
+### What it checks:
+- **ZFS**:
+  - Lists pools and datasets
+  - Verifies pool health and dataset presence
+- **Samba**:
+  - Checks `smbd` service status
+  - Confirms presence of `/etc/samba/users.conf`
+- **SSH**:
+  - Confirms SSH service is enabled and/or running
+- **Firewall (UFW)**:
+  - Displays current UFW status and open ports
+- **Avahi (mDNS)**:
+  - Confirms `avahi-daemon` is running
+  - Verifies that `_adisk._tcp` service is advertised (for Time Machine)
+
+This script should be used at the end of the install process to verify everything was provisioned correctly.
+
+--- 
+
+## Step 100: Final Wrap-Up and Reboot
+
+**Script:** `100-wrapup.sh`
+
+- Displays a checklist of key setup components for manual verification:
+  - Cockpit and/or Webmin availability
+  - Samba share accessibility
+  - Time Machine discovery
+  - Email alert delivery
+  - Snapshot and backup schedule
+
+- Asks if the user wants to **reboot the NAS** immediately.
+
+### Notes:
+- Logs actions to: `/var/log/nas-setup/100-wrapup.log`
+- No actual changes are made unless reboot is confirmed.
+- Intended as a friendly last step after setup is complete.
+
+---
+
+## Optional: Install Cockpit GUI
+
+**Script:** `install-cockpit.sh`
+
+- Installs [Cockpit](https://cockpit-project.org/), a web-based interface for managing Linux systems.
+- Enables management of:
+  - Network configuration
+  - Storage (disks, ZFS, LVM)
+  - Installed packages and updates
+  - Samba shares
+- Accessible via: `https://<NAS_IP>:9090`
+
+### What it installs:
+- `cockpit`
+- `cockpit-networkmanager`
+- `cockpit-storaged`
+- `cockpit-packagekit`
+- `cockpit-samba`
+- `cockpit-dashboard`
+
+### Notes:
+- Useful for users who prefer a visual overview or multi-node dashboard.
+- Logs actions to: `/var/log/nas-setup/install-cockpit.log`
+- Ensure firewall (UFW) has port 9090 open if you wish to access remotely.
+
+---
+
+## Optional: Install Webmin GUI
+
+**Script:** `install-webmin.sh`
+
+- Installs [Webmin](https://www.webmin.com/), a browser-based interface for system administration.
+- Offers control over:
+  - Users and groups
+  - File systems and partitions
+  - Samba shares
+  - Firewall, scheduled jobs, and more
+
+### What it installs:
+- Webmin from the official Webmin APT repository
+- Adds GPG key and configures secure APT source
+
+### Access:
+- Web interface: `https://<NAS_IP>:10000`
+- Default credentials:
+  - Username: `root`
+  - Password: your root password
+
+### Notes:
+- Logs actions to: `/var/log/nas-setup/99-install-webmin.log`
+- If UFW is enabled, ensure port `10000` is allowed.
+
+---
+
+## Optional – Manage user
+**Script:** `manage-user.sh`
 
 - This script manages both user accounts and their associated Samba shares.
 - Supports the following subcommands:
@@ -144,9 +348,9 @@ This script is interactive, safe to re-run, and fully scriptable for automation.
 
 ---
 
-## Step 7: Optional – Group Share Setup
+## Optional – Group Share Setup
 
-**Script:** `07-create-group-share.sh`
+**Script:** `create-group-share.sh`
 
 - This script creates a shared directory for a user group.
 - It is intended for cases where multiple users should access a common dataset.
@@ -177,202 +381,7 @@ Use this script when you want to provision shared project folders or department-
 
 --- 
 
-## Step 8: Install and Configure Rclone
+## Scripted NAS vs. TrueNAS vs. Unraid vs. OMV
+Have a look at how a scripted nas compares to other pre-build solutions
 
-**Script:** `08-install-rclone.sh`
-
-- Installs the latest stable version of [rclone](https://rclone.org/) from the official source.
-- Removes any previously installed version from the system package manager.
-- Verifies the rclone installation.
-- Logs all activity to: `/var/log/nas-setup/08-install-rclone.log`
-
-### Notes:
-- This script does **not** run `rclone config` interactively — you must run it manually:
-  ```bash
-  rclone config
-  ```
-- Rclone configuration is stored in:
-  ```
-  ~/.config/rclone/rclone.conf
-  ```
-
-This tool can be used for syncing with cloud storage providers like Google Drive, Dropbox, S3, etc.
-
----
-
-## Step 9: ZFS Snapshots and Cloud Backup
-
-**Script:** `09-snapshot-backup.sh`
-
-- Installs and configures `zfs-auto-snapshot` to handle automatic local ZFS snapshots.
-- Retention policy:
-  - `24` hourly snapshots
-  - `7` daily snapshots
-  - `4` weekly snapshots
-- Creates a daily cron job for `rclone` to sync a dataset to a cloud remote.
-- All actions are logged to:
-  - Snapshot/cron setup log: `/var/log/nas-setup/09-snapshot-backup.log`
-  - Daily rclone sync log: `/var/log/nas-backup.log`
-
-### Prompts:
-- Path to the local dataset to back up (e.g. `/tank_hdd`)
-- Target remote (e.g. `remote:backup`)
-
-### Behavior:
-- If backup fails, an alert is sent via `mailx` to the `root` user (adjustable).
-- The cron job is saved at: `/etc/cron.daily/rclone-backup`
-
-You should ensure that `rclone config` is already completed before running this step.
-
----
-
-## Step 10: Configure Email Alerts (Postmark SMTP)
-
-**Script:** `10-configure-email.sh`
-
-- Sets up outbound email notifications via [Postmark SMTP](https://postmarkapp.com/).
-- Useful for system alerts (e.g., backup failures, SMART warnings).
-- Uses `msmtp` and `mailx` for minimal MTA functionality.
-
-### What it does:
-- Installs `msmtp`, `msmtp-mta`, and `bsd-mailx`
-- Prompts for:
-  - Sender address (must be verified in Postmark)
-  - Recipient address (target inbox for alerts)
-  - Postmark server token (used as SMTP credentials)
-- Writes configuration to `/etc/msmtprc` with secure permissions
-- Routes system mail from `root` to the recipient
-- Sends a test email to verify delivery
-- Logs actions to: `/var/log/nas-setup/10-configure-email.log`
-
-### Note:
-This is intended for authenticated SMTP relay via Postmark. You may adapt it for other SMTP providers if desired.
-
----
-
-
-## Step 11: Secure SSH Access
-
-**Script:** `11-secure-ssh.sh`
-
-- Disables SSH password authentication to enforce key-based login only.
-- Modifies `/etc/ssh/sshd_config` to set:
-  ```text
-  PasswordAuthentication no
-  ```
-- Attempts to restart the `ssh` or `sshd` service.
-- Logs all actions to: `/var/log/nas-setup/11-secure-ssh.log`
-
-⚠️ Ensure you have working SSH key access **before** applying this script, or you may lock yourself out.
-
-
-## Step 12: Configure Firewall (UFW)
-
-**Script:** `12-configure-firewall.sh`
-
-- Enables the uncomplicated firewall (UFW) and applies baseline rules.
-- Opens ports:
-  - `22` (SSH)
-  - `445` (Samba/SMB)
-- Masks `nmbd.service` to avoid legacy NetBIOS conflicts.
-- Validates Samba availability (via `ping` and `smbclient`) if possible.
-- Logs all actions to: `/var/log/nas-setup/12-configure-firewall.log`
-
-This script provides basic security hardening for the NAS server.
-
----
-
-## Step 13: Validate Installation
-
-**Script:** `13-validate-installation.sh`
-
-- Performs a complete validation of the NAS configuration after setup.
-- Logs all results to: `/var/log/nas-setup/13-validate-installation.log`
-
-### What it checks:
-- **ZFS**:
-  - Lists pools and datasets
-  - Verifies pool health and dataset presence
-- **Samba**:
-  - Checks `smbd` service status
-  - Confirms presence of `/etc/samba/users.conf`
-- **SSH**:
-  - Confirms SSH service is enabled and/or running
-- **Firewall (UFW)**:
-  - Displays current UFW status and open ports
-- **Avahi (mDNS)**:
-  - Confirms `avahi-daemon` is running
-  - Verifies that `_adisk._tcp` service is advertised (for Time Machine)
-
-This script should be used at the end of the install process to verify everything was provisioned correctly.
-
---- 
-
-
-## Step 98 (Optional): Install Cockpit GUI
-
-**Script:** `98-install-cockpit.sh`
-
-- Installs [Cockpit](https://cockpit-project.org/), a web-based interface for managing Linux systems.
-- Enables management of:
-  - Network configuration
-  - Storage (disks, ZFS, LVM)
-  - Installed packages and updates
-  - Samba shares
-- Accessible via: `https://<NAS_IP>:9090`
-
-### What it installs:
-- `cockpit`
-- `cockpit-networkmanager`
-- `cockpit-storaged`
-- `cockpit-packagekit`
-- `cockpit-samba`
-- `cockpit-dashboard`
-
-### Notes:
-- Useful for users who prefer a visual overview or multi-node dashboard.
-- Logs actions to: `/var/log/nas-setup/98-install-cockpit.log`
-- Ensure firewall (UFW) has port 9090 open if you wish to access remotely.
-
-
-**Script:** `99-install-webmin.sh`
-
-- Installs [Webmin](https://www.webmin.com/), a browser-based interface for system administration.
-- Offers control over:
-  - Users and groups
-  - File systems and partitions
-  - Samba shares
-  - Firewall, scheduled jobs, and more
-
-### What it installs:
-- Webmin from the official Webmin APT repository
-- Adds GPG key and configures secure APT source
-
-### Access:
-- Web interface: `https://<NAS_IP>:10000`
-- Default credentials:
-  - Username: `root`
-  - Password: your root password
-
-### Notes:
-- Logs actions to: `/var/log/nas-setup/99-install-webmin.log`
-- If UFW is enabled, ensure port `10000` is allowed.
-
-## Step 100 (Optional): Final Wrap-Up and Reboot
-
-**Script:** `100-wrapup.sh`
-
-- Displays a checklist of key setup components for manual verification:
-  - Cockpit and/or Webmin availability
-  - Samba share accessibility
-  - Time Machine discovery
-  - Email alert delivery
-  - Snapshot and backup schedule
-
-- Asks if the user wants to **reboot the NAS** immediately.
-
-### Notes:
-- Logs actions to: `/var/log/nas-setup/100-wrapup.log`
-- No actual changes are made unless reboot is confirmed.
-- Intended as a friendly last step after setup is complete.
-
+[View comparison](nas_comparison.md)

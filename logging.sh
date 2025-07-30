@@ -5,6 +5,8 @@ LOG_DIR="/var/log/nas-setup"
 mkdir -p "$LOG_DIR"
 chmod 755 "$LOG_DIR"
 
+: "${LOG_FILE:=/var/log/nas-setup/default.log}"
+
 # Color codes
 RED="\033[1;31m"
 GREEN="\033[1;32m"

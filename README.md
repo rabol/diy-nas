@@ -12,7 +12,7 @@ in one system I spend 30 hours for it to check my array, just to tell med that I
 
 ---
 
-## 🚀 Features
+## Features
 
 - ZFS pool creation and dataset management
 - Samba sharing with group/user controls
@@ -26,15 +26,15 @@ in one system I spend 30 hours for it to check my array, just to tell med that I
 
 ---
 
-## 📦 Requirements
+## Requirements
 
-- Ubuntu 22.04 LTS or newer
+- Ubuntu Ubuntu 24.04.2 LTS 
 - Root privileges
 - Internet access (for installing packages)
 
 ---
 
-## 📂 How to Use
+## How to Use
 
 1. Clone or extract this repository.
    ```bash
@@ -44,52 +44,27 @@ in one system I spend 30 hours for it to check my array, just to tell med that I
    ```bash
    cd diy-nas
    chmod +x *.sh
+   ./setup.sh
    ```
-3. Run the orchestrator: it will run all scripts or you can run each script manually
-   ```bash
-   ./index.sh
-   ```
+
+NOTE: if you have any active partitions or zfs pools on your storage, it can be that you are required to reboot
 
 > You can comment out optional steps inside `index.sh` if not needed (e.g., `Cockpit`, `Webmin`, `Wrap-up`).
 
 ---
 
-## 📑 Documentation
+## Documentation
 
 Detailed documentation is available in:
 
-**`installation.md`**  
-Explains every step from prechecks to optional UI setup and backup strategy.
+[View Documentation](docs/index.md)
 
 ---
 
-## 🧩 Optional GUI Management
-
-- `98-install-cockpit.sh`: Cockpit GUI at `https://<NAS_IP>:9090`
-- `99-install-webmin.sh`: Webmin GUI at `https://<NAS_IP>:10000`
-
----
-
-## ✅ Final Validation
-
-- Use `13-validate-installation.sh` to confirm services and storage are configured as expected.
-- Run `100-wrapup.sh` to finish with a summary and reboot option.
-
----
-
-## 🛠 Logging
-
-Each script writes detailed logs to:
-```
-/var/log/nas-setup/
-```
-
----
-
-## 🔒 Note
+## Note
 
 This setup assumes you’re working in a trusted LAN environment. Still, UFW and SSH hardening steps are included for best practice.
 
 ---
 
-Enjoy your clean, modular, scriptable NAS 🎉
+Enjoy your clean, modular, scriptable NAS

@@ -1,34 +1,71 @@
 #!/bin/bash
 set -euo pipefail
 
-SCRIPT_NAME="100-wrapup"
-LOG_DIR="/var/log/nas-setup"
+# Load logging functions
+if [[ -f "./logging.sh" ]]; then
+  source ./logging.sh
+else
+  echo "ERROR: logging.sh not found."
+  exit 1
+fi
+
+# Ensure script is run as root
+if [[ $EUID -ne 0 ]]; then
+  log_error "This script must be run as root."
+  exit 1
+fi
+
+# Load config
+CONFIG_FILE="/etc/nas-setup-scripts/config.sh"
+if [[ -f "$CONFIG_FILE" ]]; then
+  source "$CONFIG_FILE"
+else
+  log_error "Missing config file at $CONFIG_FILE"
+  exit 1
+fi
+
+SCRIPT_NAME="$(basename "$0")"
 LOG_FILE="${LOG_DIR}/${SCRIPT_NAME}.log"
 
+# Ensure log directory exists
 mkdir -p "$LOG_DIR"
-touch "$LOG_FILE"
-chmod 600 "$LOG_FILE"
+chmod 755 "$LOG_DIR"
 
-log() {
-  echo "$(date '+%Y-%m-%d %H:%M:%S') - $1" | tee -a "$LOG_FILE"
-}
+# Ask user for confirmation
+read -rp "Do you want to continue with ${SCRIPT_NAME}? (yes/no): " ANSWER
+ANSWER="${ANSWER,,}"  # Convert to lowercase
 
-log "=== Final Setup Summary and Optional Reboot ==="
+if [[ "$ANSWER" != "yes" && "$ANSWER" != "y"]]; then
+  log_info "${SCRIPT_NAME} skipped by user."
+  exit 0
+fi
 
-echo
-log "Please review the following post-install checks manually:"
-echo " - Cockpit (if installed) accessible at: https://<NAS_IP>:9090"
-echo " - Webmin (if installed) accessible at: https://<NAS_IP>:10000"
-echo " - Samba shares are mountable from your client systems"
-echo " - Time Machine is discoverable on macOS (via mDNS)"
-echo " - Email alert (Step 10) test succeeded"
-echo " - Snapshot and backup jobs (Step 9) are scheduled"
+###### -- Main script starts here - ######
+
+read -rp "Do you want to remove unused packages? (yes/no): " ANSWER
+if [[ "$ANSWER" =~ ^(yes|y)$ ]]; then
+  log_info "Removing unused packages..."
+  apt-get autoremove -y >> "$LOG_FILE" 2>&1
+  log_info "Unused packages removed."
+else
+  log_info "Package cleanup skipped."
+fi
+
+log_info "Please review the following post-install checks manually:"
+log_info " - Cockpit (if installed) accessible at: https://<NAS_IP>:9090"
+log_info " - Webmin (if installed) accessible at: https://<NAS_IP>:10000"
+log_info " - Samba shares are mountable from your client systems"
+log_info " - Time Machine is discoverable on macOS (via mDNS)"
+log_info " - Email alert (Step 10) test succeeded"
+log_info " - Snapshot and backup jobs (Step 9) are scheduled"
 
 echo
 read -rp "Do you want to reboot now? [y/N]: " confirm
-if [[ "${confirm,,}" == "y" ]]; then
-  log "User chose to reboot now."
+if [[ "${confirm,,}" =~ ^(y|yes)$ ]]; then
+  log_info "User chose to reboot now."
   reboot
 else
-  log "User skipped reboot. Setup is complete."
+  log_info "User skipped reboot. Setup is complete."
 fi
+
+log_success "Wrap-up complete. System is ready."
